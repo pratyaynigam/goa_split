@@ -1,0 +1,1368 @@
+Here is the completely updated, production-ready `index.html` designed for your **Goa Trip**.
+
+### Key Updates & Fixes:
+
+1. **The 6-Traveler Cap:** The app now actively monitors the group size. As soon as the trip hits exactly 6 people, the "Add New User" form on the login screen and the "Add Someone" box in the settings automatically disappear. New devices will only see the existing names to tap and join. If someone is removed, the forms instantly reappear.
+2. **Double Settlement Bug Fixed:** The issue where two entries were created during settlement was caused by a "Double Tap Race Condition" on mobile browsers. I have implemented a strict execution lock (`isSettling = true`) that freezes the engine until the first transaction safely reaches the cloud, physically preventing duplicates.
+3. **Goa Theme & INR Native:** Stripped out the Thai Baht conversion logic and dropdowns. The app is now strictly locked to ₹ (INR) for a much cleaner, faster expense entry experience. The visual theme and background have been updated for a Goa beach vibe, and the version is bumped to **V2.0**.
+
+### ⚠️ Important Note on using the same Google Sheet:
+
+Because you are using the exact same Google Sheet URL, **when you first open this new app, it will load your old Thailand data** (which has 8 people).
+
+* Simply tap **Reset**, enter your password (`Prat@112890`), and it will wipe the Google Sheet completely clean so you can start fresh with your 6 Goa travelers!
+
+---
+
+### Replace your entire `index.html` with this code:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <!-- Anti-Caching Meta Tags -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
+    <title>GoaSplit - Trip Expense Tracker</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        teal: { 400: '#2dd4bf', 500: '#008080', 600: '#006666' },
+                        orange: { 400: '#fb923c', 500: '#FF6F61', 600: '#e56357' },
+                        slate: { 50: '#F8FAFC', 100: '#F1F5F9', 800: '#1E293B', 900: '#0F172A' }
+                    },
+                    boxShadow: {
+                        'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
+                        'glass-sm': '0 4px 16px 0 rgba(31, 38, 135, 0.05)',
+                        'up': '0 -4px 20px -2px rgba(0, 0, 0, 0.1)',
+                    },
+                    fontFamily: {
+                        sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            -webkit-tap-highlight-color: transparent;
+            overscroll-behavior-y: none;
+            background-color: #0F172A;
+        }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom, 24px); }
+        .pt-safe { padding-top: env(safe-area-inset-top, 24px); }
+        .hit-target { min-height: 48px; min-width: 48px; }
+
+        .bg-seaside {
+            position: fixed; inset: 0; z-index: -2;
+            /* Updated to a Goa-style sunset beach */
+            background-image: url('https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?q=80&w=1080&auto=format&fit=crop');
+            background-size: cover; background-position: center;
+        }
+        .bg-overlay {
+            position: fixed; inset: 0; z-index: -1;
+            background: rgba(248, 250, 252, 0.75); 
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
+        }
+        .glass-header {
+            background: rgba(255, 255, 255, 0.90);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        .split-cb-wrapper input:checked + div { background-color: #008080; color: white; border-color: #008080; }
+        .split-cb-wrapper input:not(:checked) + div { background-color: rgba(255, 255, 255, 0.6); color: #64748b; border-color: #cbd5e1; }
+
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+        .modal-enter { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .modal-exit { animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .fade-in { animation: fadeIn 0.3s ease-out forwards; }
+        
+        @keyframes slideUp { from { transform: translateY(100%); opacity: 0.5; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes slideDown { from { transform: translateY(0); opacity: 1; } to { transform: translateY(100%); opacity: 0; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .tab-active { color: #008080; font-weight: 700; transform: translateY(-2px); }
+        .tab-inactive { color: #64748b; font-weight: 500; }
+        .btn-press { transition: all 0.2s ease; }
+        .btn-press:active { transform: scale(0.95); opacity: 0.8; }
+    </style>
+</head>
+<body class="text-slate-800 h-screen w-screen overflow-hidden flex flex-col pt-safe font-sans">
+
+    <div class="bg-seaside"></div>
+    <div class="bg-overlay"></div>
+
+    <!-- INITIAL SPLASH LOADER -->
+    <div id="splash-screen" class="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-slate-50/90 backdrop-blur-xl transition-opacity duration-300">
+        <div class="animate-pulse text-7xl mb-4">🏖️</div>
+        <h2 class="text-xl font-black text-teal-600">GoaSplit</h2>
+        <p id="splash-text" class="text-xs font-bold text-slate-500 mt-2 uppercase tracking-widest">Syncing with Cloud...</p>
+    </div>
+
+    <!-- CUSTOM LOGIN SCREEN -->
+    <div id="login-screen" class="fixed inset-0 z-50 hidden flex-col items-center justify-center p-6 bg-slate-50/80 backdrop-blur-xl">
+        <div class="glass-card p-8 rounded-[2rem] text-center w-full max-w-sm shadow-glass fade-in">
+            <div class="text-6xl mb-4 transform rotate-12">🌴</div>
+            <h1 class="text-3xl font-black text-teal-600 tracking-tight mb-2">Join Trip</h1>
+            <p class="text-sm text-slate-500 font-medium mb-6">Who is using this phone?</p>
+            
+            <div id="existing-users-section" class="mb-6 hidden">
+                <p class="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-3">Select your name</p>
+                <div id="existing-users-list" class="flex flex-wrap gap-2 justify-center"></div>
+            </div>
+
+            <!-- Dynamic New User Section (Hides at 6 travelers) -->
+            <div id="new-user-section">
+                <div class="relative flex items-center mb-4">
+                    <div class="flex-grow border-t border-slate-300"></div>
+                    <span class="flex-shrink-0 mx-4 text-slate-400 text-xs font-bold uppercase">Or join as new</span>
+                    <div class="flex-grow border-t border-slate-300"></div>
+                </div>
+                
+                <div class="flex flex-col gap-3">
+                    <input type="text" id="login-name-input" placeholder="Enter your name" class="w-full bg-white/50 border border-slate-200 rounded-xl px-4 py-3 text-center text-lg font-bold text-slate-800 focus:outline-none focus:border-teal-500 shadow-sm hit-target">
+                    <button onclick="loginAsNewUser()" class="w-full bg-teal-500 text-white font-bold py-3.5 rounded-xl shadow-md btn-press hit-target text-lg">Enter App</button>
+                </div>
+            </div>
+            
+            <!-- Warning when full -->
+            <div id="max-users-warning" class="hidden mt-4 text-sm font-bold text-orange-500">
+                Trip is full (6/6 travelers). Please select your name from above.
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP WRAPPER -->
+    <div id="app-wrapper" class="hidden flex-col h-full w-full">
+        <header class="glass-header px-5 py-4 flex justify-between items-center z-10 shrink-0 shadow-glass-sm rounded-b-3xl">
+            <div>
+                <h1 class="text-2xl font-black text-teal-600 tracking-tight flex items-baseline">
+                    GoaSplit 🏖️ <span class="text-[10px] text-slate-400 font-bold ml-1.5 tracking-normal uppercase">V2.0</span>
+                </h1>
+                <p id="user-greeting" class="text-[11px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Welcome</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="forceSync()" class="text-teal-600 text-[10px] uppercase tracking-wider font-bold hit-target px-3 flex items-center justify-center btn-press bg-teal-50 rounded-full border border-teal-100">
+                    Sync
+                </button>
+                <button id="btn-reset" class="text-orange-500 text-[10px] uppercase tracking-wider font-bold hit-target px-3 flex items-center justify-center btn-press bg-orange-50 rounded-full border border-orange-100">
+                    Reset
+                </button>
+            </div>
+        </header>
+
+        <main id="main-content" class="flex-1 overflow-y-auto pb-32 px-5 py-6 relative space-y-5 scroll-smooth"></main>
+
+        <button id="btn-add-expense" class="fixed bottom-28 right-6 bg-orange-500 text-white rounded-full w-16 h-16 flex items-center justify-center shadow-lg text-4xl font-light btn-press z-20 focus:outline-none border-4 border-white/40 shadow-[0_8px_30px_rgb(255,111,97,0.4)]">
+            +
+        </button>
+
+        <nav class="glass-header pb-safe shadow-up shrink-0 w-full z-10 fixed bottom-0 rounded-t-3xl border-t border-white/60">
+            <div class="flex justify-between items-center h-20 px-4">
+                <button onclick="switchTab('expenses')" id="tab-expenses" class="flex flex-col items-center justify-center w-1/4 hit-target tab-active transition-all duration-300">
+                    <span class="text-[22px] mb-1 drop-shadow-sm">🧾</span>
+                    <span class="text-[9px] uppercase tracking-wider font-bold">Expenses</span>
+                </button>
+                <button onclick="switchTab('balances')" id="tab-balances" class="flex flex-col items-center justify-center w-1/4 hit-target tab-inactive transition-all duration-300">
+                    <span class="text-[22px] mb-1 drop-shadow-sm">⚖️</span>
+                    <span class="text-[9px] uppercase tracking-wider font-bold">Balances</span>
+                </button>
+                <button onclick="switchTab('summary')" id="tab-summary" class="flex flex-col items-center justify-center w-1/4 hit-target tab-inactive transition-all duration-300">
+                    <span class="text-[22px] mb-1 drop-shadow-sm">📊</span>
+                    <span class="text-[9px] uppercase tracking-wider font-bold">Summary</span>
+                </button>
+                <button onclick="switchTab('activity')" id="tab-activity" class="flex flex-col items-center justify-center w-1/4 hit-target tab-inactive transition-all duration-300">
+                    <span class="text-[22px] mb-1 drop-shadow-sm">🕒</span>
+                    <span class="text-[9px] uppercase tracking-wider font-bold">Activity</span>
+                </button>
+            </div>
+        </nav>
+    </div>
+
+    <!-- MODALS -->
+    <!-- FULL SCREEN MODAL: Add/Edit Expense -->
+    <div id="modal-expense" class="fixed inset-0 bg-slate-50/95 backdrop-blur-xl z-50 flex flex-col pt-safe hidden transform translate-y-full">
+        <div class="flex justify-between items-center px-5 py-4 bg-white/80 backdrop-blur-md border-b border-slate-200/50 shrink-0 relative z-20">
+            <button id="btn-close-expense" class="text-slate-500 font-bold hit-target flex items-center btn-press text-sm">Cancel</button>
+            <h2 id="modal-expense-title" class="text-lg font-bold text-slate-800">Add Expense</h2>
+            <button id="btn-save-expense" class="text-teal-600 font-bold hit-target flex items-center justify-end btn-press text-sm w-12">Save</button>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto px-5 py-6 space-y-6 relative">
+            <div id="expense-loader" class="absolute inset-0 bg-white/80 backdrop-blur-sm z-30 hidden flex-col items-center justify-center rounded-t-3xl">
+                <div class="animate-spin text-5xl mb-4">🌀</div>
+                <h3 class="text-lg font-black text-slate-800">Syncing to Cloud...</h3>
+                <p class="text-xs text-slate-500 font-bold mt-1">Please wait, do not close.</p>
+            </div>
+
+            <div class="bg-white p-6 rounded-3xl shadow-glass-sm border border-slate-100">
+                <div class="mb-4">
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">What was it for?</label>
+                    <input type="text" id="exp-desc" placeholder="e.g., Scooty Rent, Beer" class="w-full text-xl font-medium border-b-2 border-slate-100 bg-transparent py-2 focus:outline-none focus:border-teal-500 transition-colors text-slate-800 placeholder-slate-300">
+                </div>
+                <div class="pt-2">
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Amount (INR)</label>
+                    <div class="relative flex items-center">
+                        <span class="text-3xl text-slate-400 font-medium mr-2">₹</span>
+                        <input type="number" id="exp-amount" inputmode="decimal" placeholder="0" class="w-full text-5xl font-black border-b-2 border-slate-100 bg-transparent py-2 focus:outline-none focus:border-teal-500 transition-colors text-slate-800 placeholder-slate-200">
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-white p-5 rounded-3xl shadow-glass-sm border border-slate-100 relative">
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Paid By</label>
+                    <select id="exp-payer" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500 hit-target appearance-none pr-8"></select>
+                    <div class="pointer-events-none absolute inset-y-0 right-7 flex items-center px-2 pt-6 text-slate-400">
+                        <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                    </div>
+                </div>
+                <div class="bg-white p-5 rounded-3xl shadow-glass-sm border border-slate-100 relative">
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Category</label>
+                    <select id="exp-category" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500 hit-target appearance-none pr-8">
+                        <option value="Food">🍔 Food & Drinks</option>
+                        <option value="Transport">🚕 Scooty & Cabs</option>
+                        <option value="Hotel">🏨 Stay / Villa</option>
+                        <option value="Activities">🏄 Clubs & Activities</option>
+                        <option value="Misc">🛍️ Misc</option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-7 flex items-center px-2 pt-6 text-slate-400">
+                        <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Enhanced Split Section -->
+            <div class="bg-white p-6 rounded-3xl shadow-glass-sm border border-slate-100 pb-8">
+                <!-- Split Type Toggle -->
+                <div class="flex justify-between items-center mb-4">
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">Split Type</label>
+                    <div class="flex bg-slate-100 rounded-lg p-1">
+                        <button id="btn-split-equal" type="button" class="px-4 py-1.5 text-xs font-bold rounded-md bg-white shadow-sm text-teal-600 transition-all">Equal</button>
+                        <button id="btn-split-exact" type="button" class="px-4 py-1.5 text-xs font-bold rounded-md text-slate-500 transition-all hover:bg-slate-200/50">Exact</button>
+                    </div>
+                </div>
+
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-[11px] text-slate-500 font-bold">Split calculation</span>
+                    <span id="split-calc-display" class="text-sm font-black text-teal-600 bg-teal-50 px-3 py-1 rounded-lg">₹0 / each</span>
+                </div>
+                
+                <!-- Equal Split Container -->
+                <div id="split-equal-container" class="transition-all">
+                    <p class="text-[11px] text-slate-400 mb-4 font-medium leading-relaxed">Tap to include/exclude. Amount redistributes equally.</p>
+                    <div id="split-checkboxes" class="grid grid-cols-2 gap-3"></div>
+                </div>
+
+                <!-- Exact Split Container -->
+                <div id="split-exact-container" class="hidden transition-all space-y-2">
+                    <p class="text-[11px] text-slate-400 mb-4 font-medium leading-relaxed">Enter specific amounts. Must sum up to total.</p>
+                    <div id="exact-inputs-list" class="space-y-2.5"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Expense Details Modal -->
+    <div id="modal-details" class="fixed inset-0 bg-slate-50/95 backdrop-blur-xl z-50 flex flex-col pt-safe hidden transform translate-y-full">
+        <div class="flex justify-between items-center px-5 py-4 bg-white/80 backdrop-blur-md border-b border-slate-200/50 shrink-0">
+            <button onclick="closeDetailsModal()" class="text-slate-500 font-bold hit-target flex items-center btn-press text-sm w-12">Close</button>
+            <h2 class="text-lg font-bold text-slate-800">Expense Details</h2>
+            <div id="details-action-btn" class="w-12"></div> <!-- Dynamically injected Edit button -->
+        </div>
+        <div id="details-content" class="flex-1 overflow-y-auto px-5 py-6 space-y-6"></div>
+    </div>
+
+    <!-- Manage Travelers Modal -->
+    <div id="modal-names" class="fixed inset-0 bg-slate-50/95 backdrop-blur-xl z-50 flex flex-col pt-safe hidden transform translate-y-full">
+        <div class="flex justify-between items-center px-5 py-4 bg-white/80 backdrop-blur-md border-b border-slate-200/50 shrink-0">
+            <button id="btn-close-names" class="text-slate-500 font-bold hit-target flex items-center btn-press text-sm">Done</button>
+            <h2 class="text-lg font-bold text-slate-800">Manage Travelers</h2>
+            <div class="w-12"></div>
+        </div>
+        <div class="flex-1 overflow-y-auto px-5 py-6">
+            
+            <div id="add-traveler-section" class="bg-white p-6 rounded-3xl shadow-glass-sm border border-slate-100 mb-6">
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Add Someone (Max 6)</h3>
+                <div class="flex gap-2">
+                    <input type="text" id="new-traveler-name" placeholder="Friend's Name" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:outline-none focus:border-teal-500 hit-target">
+                    <button id="btn-add-traveler" class="bg-teal-500 text-white font-bold px-5 rounded-xl btn-press shadow-md">Add</button>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-3xl shadow-glass-sm border border-slate-100">
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Current Group</h3>
+                <div id="names-list" class="space-y-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // ⚠️ SAME GOOGLE SCRIPT URL USED HERE
+        // ==========================================
+        const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzVUwMueDK7RKkU953JiegITUJs-zYrLs-RfM0uZJFGjv3a4bdEt9ikK61V1E7rwTBAJg/exec'; 
+        
+        const STORAGE_KEY = 'goaTripData_v1'; // Clean local slate for Goa
+        const USER_KEY = 'goaTripCurrentUser';
+        
+        let appData = { travelers: [], expenses: [], activities: [] };
+        let currentTab = 'expenses';
+        let modalAmount = 0;
+        let currentUser = null; 
+        let editingExpenseId = null;
+        let splitMode = 'equal'; 
+        let isSavingExpense = false; // Lock to prevent double-save execution
+        let isSettling = false; // Lock to prevent double-settlement execution
+
+        // --- Core Engine & Online Listeners ---
+        window.onload = async function () {
+            await loadData();
+            
+            const splash = document.getElementById('splash-screen');
+            splash.style.opacity = '0';
+            setTimeout(() => splash.classList.add('hidden'), 300);
+
+            const savedUser = localStorage.getItem(USER_KEY);
+            if (savedUser) {
+                currentUser = JSON.parse(savedUser);
+                if (!appData.travelers.includes(currentUser.name)) {
+                    // Only push if there's room
+                    if (appData.travelers.length < 6) {
+                        appData.travelers.push(currentUser.name);
+                        await saveData(); 
+                    }
+                }
+                startMainApp();
+            } else {
+                updateTravelerUI();
+                showLoginScreen();
+            }
+        };
+
+        window.addEventListener('online', async () => {
+            if (!currentUser) return;
+            const splash = document.getElementById('splash-screen');
+            document.getElementById('splash-text').innerText = "Back Online! Syncing...";
+            splash.classList.remove('hidden');
+            splash.style.opacity = '1';
+            
+            await saveData(); 
+            
+            splash.style.opacity = '0';
+            setTimeout(() => splash.classList.add('hidden'), 300);
+            switchTab(currentTab);
+        });
+
+        window.addEventListener('offline', () => {
+            alert("📶 You are offline. Expenses will be saved securely on your phone and sync automatically when your connection returns.");
+        });
+
+        window.forceSync = async function() {
+            if (!navigator.onLine) return alert("You are currently offline.");
+            const splash = document.getElementById('splash-screen');
+            document.getElementById('splash-text').innerText = "Manual Sync...";
+            splash.classList.remove('hidden');
+            splash.style.opacity = '1';
+            
+            await saveData(); 
+            
+            splash.style.opacity = '0';
+            setTimeout(() => splash.classList.add('hidden'), 300);
+            switchTab(currentTab);
+        }
+
+        async function loadData() {
+            try {
+                const response = await fetch(GOOGLE_SCRIPT_URL);
+                const text = await response.text();
+                let cloudData = null;
+                if (text) cloudData = JSON.parse(text);
+                
+                if (cloudData && Array.isArray(cloudData.travelers)) {
+                    appData = cloudData;
+                    if(!appData.activities) appData.activities = [];
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+                } else {
+                    loadFallback();
+                }
+            } catch (e) {
+                console.error("Cloud fetch failed, using local.", e);
+                loadFallback();
+            }
+        }
+
+        function loadFallback() {
+            const local = localStorage.getItem(STORAGE_KEY);
+            if (local) {
+                const parsed = JSON.parse(local);
+                if (parsed && Array.isArray(parsed.travelers)) {
+                    appData = parsed;
+                    if(!appData.activities) appData.activities = [];
+                }
+            }
+        }
+
+        // SMART SYNC MERGE ENGINE - Prevents Data Overwrites!
+        async function saveData(skipMerge = false) {
+            try {
+                if (!skipMerge && navigator.onLine) {
+                    const response = await fetch(GOOGLE_SCRIPT_URL);
+                    const text = await response.text();
+                    let cloudData = { travelers: [], expenses: [], activities: [] };
+                    if (text) {
+                        try { cloudData = JSON.parse(text); } catch(e) {}
+                    }
+
+                    const mergedTravelers = [...new Set([...(cloudData.travelers || []), ...(appData.travelers || [])])];
+                    // Enforce Max 6 limit on merge
+                    const cappedTravelers = mergedTravelers.slice(0, 6);
+
+                    const actMap = new Map();
+                    (cloudData.activities || []).forEach(a => actMap.set(a.id, a));
+                    (appData.activities || []).forEach(a => actMap.set(a.id, a));
+                    const mergedActivities = Array.from(actMap.values()).sort((a, b) => b.id - a.id);
+
+                    const expMap = new Map();
+                    (cloudData.expenses || []).forEach(e => {
+                        if(!e.updatedAt) e.updatedAt = parseInt(e.id) || 0; 
+                        expMap.set(e.id, e);
+                    });
+
+                    (appData.expenses || []).forEach(localExp => {
+                        if(!localExp.updatedAt) localExp.updatedAt = parseInt(localExp.id) || 0;
+                        const cloudExp = expMap.get(localExp.id);
+                        if (!cloudExp || localExp.updatedAt > cloudExp.updatedAt) {
+                            expMap.set(localExp.id, localExp);
+                        }
+                    });
+
+                    appData = { travelers: cappedTravelers, expenses: Array.from(expMap.values()), activities: mergedActivities };
+                }
+
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+
+                if(navigator.onLine) {
+                    await fetch(GOOGLE_SCRIPT_URL, {
+                        method: 'POST',
+                        body: JSON.stringify(appData),
+                        redirect: 'follow',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' } 
+                    });
+                }
+            } catch (error) {
+                console.error("Cloud sync failed. Saved locally.");
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+            }
+        }
+
+        function logActivity(type, desc, amount, byUser) {
+            if(!appData.activities) appData.activities = [];
+            appData.activities.push({
+                id: Date.now().toString(),
+                type: type, 
+                desc: desc,
+                amount: amount,
+                by: byUser,
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        // --- Logic to Limit Users to 6 ---
+        function updateTravelerUI() {
+            const count = appData.travelers.length;
+            const loginNewSec = document.getElementById('new-user-section');
+            const loginWarn = document.getElementById('max-users-warning');
+            const addTravSec = document.getElementById('add-traveler-section');
+            
+            if(loginNewSec && loginWarn) {
+                if (count >= 6) {
+                    loginNewSec.classList.add('hidden');
+                    loginWarn.classList.remove('hidden');
+                } else {
+                    loginNewSec.classList.remove('hidden');
+                    loginWarn.classList.add('hidden');
+                }
+            }
+
+            if (addTravSec) {
+                if (count >= 6) addTravSec.classList.add('hidden');
+                else addTravSec.classList.remove('hidden');
+            }
+        }
+
+        // --- Soft Login Flow ---
+        function showLoginScreen() {
+            document.getElementById('login-screen').classList.remove('hidden');
+            document.getElementById('login-screen').classList.add('flex');
+            
+            if (appData.travelers.length > 0) {
+                document.getElementById('existing-users-section').classList.remove('hidden');
+                const list = document.getElementById('existing-users-list');
+                list.innerHTML = appData.travelers.map(name => `
+                    <button onclick="loginAsExisting('${name}')" class="bg-white border border-slate-200 text-slate-700 font-bold py-2 px-4 rounded-full shadow-sm btn-press text-sm">
+                        ${name}
+                    </button>
+                `).join('');
+            }
+        }
+
+        function formatName(name) { return name.trim().charAt(0).toUpperCase() + name.trim().slice(1); }
+
+        window.loginAsExisting = async function(name) {
+            currentUser = { name: name };
+            localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
+            startMainApp();
+        }
+
+        window.loginAsNewUser = async function() {
+            if (appData.travelers.length >= 6) return alert("Trip is full. Max 6 travelers allowed.");
+
+            let inputName = document.getElementById('login-name-input').value;
+            if(!inputName.trim()) return alert("Please enter your name");
+            
+            inputName = formatName(inputName);
+            const exists = appData.travelers.find(t => t.toLowerCase() === inputName.toLowerCase());
+            if (exists) {
+                currentUser = { name: exists };
+            } else {
+                currentUser = { name: inputName };
+                appData.travelers.push(inputName);
+                await saveData();
+            }
+            
+            localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
+            startMainApp();
+        }
+
+        function startMainApp() {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('login-screen').classList.remove('flex');
+            document.getElementById('app-wrapper').classList.remove('hidden');
+            document.getElementById('app-wrapper').classList.add('flex');
+            document.getElementById('user-greeting').innerText = `Hi, ${currentUser.name}`;
+
+            setupEventListeners();
+            switchTab('expenses');
+        }
+
+        // --- Navigation ---
+        function switchTab(tab) {
+            currentTab = tab;
+            ['expenses', 'balances', 'summary', 'activity'].forEach(t => {
+                const el = document.getElementById(`tab-${t}`);
+                if (t === tab) el.classList.replace('tab-inactive', 'tab-active');
+                else el.classList.replace('tab-active', 'tab-inactive');
+            });
+
+            document.getElementById('btn-add-expense').style.display = (tab === 'expenses' || tab === 'activity') ? 'flex' : 'none';
+
+            const main = document.getElementById('main-content');
+            main.innerHTML = ''; main.scrollTop = 0;
+
+            if (tab === 'expenses') renderExpenses(main);
+            if (tab === 'balances') renderBalances(main);
+            if (tab === 'summary') renderSummary(main);
+            if (tab === 'activity') renderActivity(main);
+        }
+
+        function getValidExpenses() { return appData.expenses.filter(e => !e.isDeleted); }
+
+        // --- Renderers ---
+        function renderExpenses(container) {
+            const validExps = getValidExpenses();
+            if (validExps.length === 0) {
+                container.innerHTML = `
+                    <div class="h-full flex flex-col items-center justify-center text-center mt-24 fade-in">
+                        <div class="text-7xl mb-6 bg-white/60 backdrop-blur-sm rounded-[2rem] p-6 shadow-glass-sm border border-white/50 inline-block transform -rotate-6">🥥</div>
+                        <h2 class="text-2xl font-black text-slate-800 mb-3">No expenses yet</h2>
+                        <p class="text-sm px-10 text-slate-600 font-medium leading-relaxed">Tap the + button below to add a transaction.</p>
+                    </div>`;
+                return;
+            }
+
+            const list = document.createElement('div');
+            list.className = 'space-y-4 fade-in';
+            const sorted = [...validExps].reverse();
+            
+            sorted.forEach((exp, index) => {
+                const isSettlement = exp.isSettlement;
+                const icon = getCategoryIcon(exp.category);
+                let payerText = exp.payer === currentUser.name ? "You" : exp.payer;
+                const splitText = isSettlement ? `Paid to ${Object.keys(exp.split)[0]}` : `Paid by ${payerText}`;
+                
+                const dateStr = new Date(exp.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                const delay = Math.min(index * 0.05, 0.5);
+
+                const card = document.createElement('div');
+                card.className = `glass-card p-5 rounded-3xl flex justify-between items-center fade-in cursor-pointer hover:bg-slate-50 transition-colors`;
+                card.style.animationDelay = `${delay}s`;
+                card.style.opacity = '0'; 
+                card.onclick = () => openExpenseDetails(exp.id);
+                
+                card.innerHTML = `
+                    <div class="flex items-center gap-4 overflow-hidden flex-1">
+                        <div class="text-2xl bg-white/70 w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border border-slate-100">
+                            ${icon}
+                        </div>
+                        <div class="truncate pr-3">
+                            <h3 class="font-bold text-slate-800 text-base truncate">${exp.desc}</h3>
+                            <p class="text-[11px] font-bold mt-1 uppercase tracking-wide ${isSettlement ? 'text-teal-600' : 'text-slate-500'}">${splitText}</p>
+                        </div>
+                    </div>
+                    <div class="text-right shrink-0 flex flex-col items-end">
+                        <div class="font-black text-lg ${isSettlement ? 'text-teal-600' : 'text-slate-800'}">₹${exp.amount.toFixed(2)}</div>
+                        <div class="flex items-center gap-3 mt-1.5">
+                            <span class="text-[10px] text-slate-400 font-semibold">${dateStr}</span>
+                            <button onclick="deleteExpense('${exp.id}', event)" class="text-[10px] text-orange-500 bg-orange-50 px-2 py-1 rounded-md uppercase tracking-wider font-bold hit-target min-h-0 min-w-0 -mr-2 btn-press">Del</button>
+                        </div>
+                    </div>
+                `;
+                list.appendChild(card);
+            });
+            container.appendChild(list);
+        }
+
+        function renderBalances(container) {
+            if (appData.travelers.length < 2) {
+                container.innerHTML = `<div class="text-center mt-28"><h2 class="text-xl font-bold text-slate-800">Add friends in Summary tab first.</h2></div>`;
+                return;
+            }
+
+            const { balances, transactions } = calculateSettlements();
+            const validExps = getValidExpenses();
+
+            if (validExps.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center mt-28 fade-in">
+                        <div class="text-7xl mb-6 bg-white/60 backdrop-blur-sm rounded-[2rem] p-6 shadow-glass-sm border border-white/50 inline-block transform rotate-6">⚖️</div>
+                        <h2 class="text-2xl font-black text-slate-800 mb-2">No Debts</h2>
+                        <p class="text-sm text-slate-600 font-medium">Add expenses to see who owes whom.</p>
+                    </div>`;
+                return;
+            }
+
+            let html = `<div class="fade-in"><h2 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 ml-2">Simplest Repayments</h2>`;
+            
+            if (transactions.length === 0) {
+                html += `
+                    <div class="glass-card border-l-4 border-l-teal-500 p-8 rounded-3xl text-center shadow-glass-sm mb-8">
+                        <div class="text-5xl mb-4">🎉</div>
+                        <h3 class="font-black text-slate-800 text-xl">All Settled Up!</h3>
+                        <p class="text-slate-500 text-sm mt-2 font-medium">Nobody owes anything.</p>
+                    </div>`;
+            } else {
+                html += `<div class="space-y-4 mb-8">`;
+                transactions.forEach((tx) => {
+                    let fromName = tx.from === currentUser.name ? "You" : tx.from;
+                    let toName = tx.to === currentUser.name ? "You" : tx.to;
+                    
+                    html += `
+                        <div class="glass-card p-5 rounded-3xl flex justify-between items-center shadow-glass-sm">
+                            <div class="flex-1 pr-4">
+                                <p class="text-sm text-slate-600 font-medium leading-tight">
+                                    <span class="font-black ${tx.from === currentUser.name ? 'text-orange-500' : 'text-slate-800'} text-base">${fromName}</span> <br/>
+                                    <span class="text-xs text-slate-400 uppercase tracking-wider font-bold">pays</span> 
+                                    <span class="font-black ${tx.to === currentUser.name ? 'text-teal-600' : 'text-slate-800'} text-base">${toName}</span>
+                                </p>
+                                <p class="text-2xl font-black text-orange-500 mt-2">₹${tx.amount.toFixed(2)}</p>
+                            </div>
+                            <button onclick="settleUp('${tx.from}', '${tx.to}', ${tx.amount})" class="bg-teal-500 text-white text-xs font-bold py-3.5 px-6 rounded-2xl shadow-md hover:bg-teal-600 btn-press whitespace-nowrap shadow-[0_4px_14px_0_rgb(0,128,128,0.39)]">
+                                Settle up
+                            </button>
+                        </div>`;
+                });
+                html += `</div>`;
+            }
+
+            html += `<h2 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 ml-2 mt-8">Individual Net Balance</h2>`;
+            html += `<div class="grid grid-cols-2 gap-3 mb-6">`;
+            
+            appData.travelers.forEach(person => {
+                const bal = balances[person] || 0;
+                let colorClass = bal > 0.01 ? 'text-teal-600' : (bal < -0.01 ? 'text-orange-500' : 'text-slate-500');
+                let prefix = bal > 0.01 ? '+' : '';
+                let bgClass = bal > 0.01 ? 'bg-teal-50/70 border-teal-100' : (bal < -0.01 ? 'bg-orange-50/70 border-orange-100' : 'glass-card border-slate-100');
+                let displayName = person === currentUser.name ? "You" : person;
+
+                html += `
+                    <div class="${bgClass} p-4 rounded-3xl border flex flex-col justify-center items-center text-center shadow-sm backdrop-blur-md overflow-hidden">
+                        <span class="text-[10px] font-bold text-slate-700 mb-1 uppercase tracking-wider truncate w-full px-2">${displayName}</span>
+                        <span class="text-lg font-black ${colorClass}">${prefix}₹${bal.toFixed(0)}</span>
+                    </div>`;
+            });
+            html += `</div></div>`;
+            container.innerHTML = html;
+        }
+
+        function renderSummary(container) {
+            const validExps = getValidExpenses();
+            const total = validExps.filter(e => !e.isSettlement).reduce((sum, e) => sum + e.amount, 0);
+            
+            let html = `<div class="fade-in">
+                <div class="bg-gradient-to-br from-teal-500 to-teal-700 text-white p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,128,128,0.3)] mb-8 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 opacity-10 text-9xl -mt-8 -mr-8 transform rotate-12 pointer-events-none">🌴</div>
+                    <p class="text-teal-100 text-[10px] font-bold uppercase tracking-widest mb-2 relative z-10">Total Trip Cost</p>
+                    <h2 class="text-5xl font-black mb-1 relative z-10 tracking-tight">₹${total.toFixed(0)}</h2>
+                </div>`;
+
+            let catTotals = {};
+            validExps.filter(e => !e.isSettlement).forEach(e => {
+                catTotals[e.category] = (catTotals[e.category] || 0) + e.amount;
+            });
+            
+            if(Object.keys(catTotals).length > 0) {
+                html += `
+                <div class="glass-card p-6 rounded-[2rem] shadow-glass-sm mb-6">
+                    <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-5">Spending by Category</h3>
+                    <div class="space-y-5">`;
+                
+                Object.entries(catTotals).sort((a,b) => b[1] - a[1]).forEach(([cat, amt]) => {
+                    const pct = ((amt / total) * 100).toFixed(0);
+                    html += `
+                        <div class="flex items-center">
+                            <span class="w-12 h-12 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-center text-xl shrink-0 mr-4 shadow-sm">${getCategoryIcon(cat)}</span>
+                            <div class="flex-1">
+                                <div class="flex justify-between mb-2">
+                                    <span class="font-bold text-slate-700 text-sm">${cat}</span>
+                                    <span class="font-black text-slate-800 text-sm">₹${amt.toFixed(0)}</span>
+                                </div>
+                                <div class="w-full bg-slate-100/50 rounded-full h-2.5 overflow-hidden border border-slate-200/50">
+                                    <div class="bg-orange-400 h-full rounded-full transition-all duration-700 ease-out" style="width: ${pct}%"></div>
+                                </div>
+                            </div>
+                        </div>`;
+                });
+                html += `</div></div>`;
+            }
+
+            html += `
+                <button onclick="openManageTravelersModal()" class="w-full glass-card border border-white/60 text-slate-700 font-bold py-5 rounded-[2rem] shadow-glass-sm hit-target flex justify-center items-center gap-3 btn-press mb-4">
+                    <span class="text-xl">👥</span> Manage Travelers
+                </button>
+            </div>`;
+            container.innerHTML = html;
+        }
+
+        function renderActivity(container) {
+            if (!appData.activities || appData.activities.length === 0) {
+                container.innerHTML = `
+                    <div class="h-full flex flex-col items-center justify-center text-center mt-24 fade-in">
+                        <div class="text-7xl mb-6 bg-white/60 backdrop-blur-sm rounded-[2rem] p-6 shadow-glass-sm border border-white/50 inline-block transform -rotate-6">🕒</div>
+                        <h2 class="text-2xl font-black text-slate-800 mb-3">No Activity Yet</h2>
+                        <p class="text-sm px-10 text-slate-600 font-medium leading-relaxed">Transactions and edits will appear here.</p>
+                    </div>`;
+                return;
+            }
+
+            let html = `<div class="fade-in space-y-3">`;
+            const sortedActivities = [...appData.activities].reverse();
+
+            sortedActivities.forEach((act, index) => {
+                const dateObj = new Date(act.timestamp);
+                const dateStr = dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                const timeStr = dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute:'2-digit' });
+                const delay = Math.min(index * 0.05, 0.5);
+                
+                let icon = '📝'; let actionText = 'updated'; let color = 'text-teal-600';
+                if (act.type === 'ADD') { icon = '✨'; actionText = 'added'; }
+                if (act.type === 'DELETE') { icon = '🗑️'; actionText = 'deleted'; color = 'text-orange-500'; }
+                if (act.type === 'SETTLE') { icon = '🤝'; actionText = 'logged'; }
+
+                let displayName = act.by === currentUser.name ? "You" : act.by;
+
+                html += `
+                    <div class="glass-card p-4 rounded-2xl flex items-start gap-4 fade-in hover:bg-slate-50 transition-colors" style="animation-delay: ${delay}s; opacity: 0;">
+                        <div class="text-xl bg-white/70 w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm border border-slate-100">
+                            ${icon}
+                        </div>
+                        <div class="flex-1 pt-0.5">
+                            <p class="text-sm text-slate-700 leading-snug">
+                                <span class="font-bold text-slate-900">${displayName}</span> ${actionText} <span class="font-bold text-slate-900">${act.desc}</span>
+                            </p>
+                            <div class="flex items-center gap-2 mt-1.5">
+                                <span class="text-xs font-black ${color}">₹${act.amount.toFixed(2)}</span>
+                                <span class="text-[10px] text-slate-400 font-bold">• ${dateStr}, ${timeStr}</span>
+                            </div>
+                        </div>
+                    </div>`;
+            });
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        // --- Core Math: Settlement Engine ---
+        function calculateSettlements() {
+            let balances = {};
+            appData.travelers.forEach(t => balances[t] = 0);
+
+            const validExps = getValidExpenses();
+            validExps.forEach(ex => {
+                if (balances[ex.payer] !== undefined) balances[ex.payer] += ex.amount; 
+                for (let person in ex.split) {
+                    if (balances[person] !== undefined) balances[person] -= ex.split[person]; 
+                }
+            });
+
+            for (let t in balances) balances[t] = Math.round(balances[t] * 100) / 100;
+
+            let debtors = []; let creditors = [];
+            for (let person in balances) {
+                if (balances[person] < -0.01) debtors.push({ person, amount: -balances[person] });
+                else if (balances[person] > 0.01) creditors.push({ person, amount: balances[person] });
+            }
+
+            debtors.sort((a, b) => b.amount - a.amount); creditors.sort((a, b) => b.amount - a.amount);
+            let transactions = []; let i = 0, j = 0;
+
+            while (i < debtors.length && j < creditors.length) {
+                let debt = debtors[i].amount; let credit = creditors[j].amount;
+                let amount = Math.min(debt, credit);
+                
+                amount = Math.round(amount * 100) / 100; 
+                if (amount > 0) transactions.push({ from: debtors[i].person, to: creditors[j].person, amount: amount });
+
+                debtors[i].amount = Math.round((debtors[i].amount - amount) * 100) / 100;
+                creditors[j].amount = Math.round((creditors[j].amount - amount) * 100) / 100;
+
+                if (debtors[i].amount < 0.01) i++;
+                if (creditors[j].amount < 0.01) j++;
+            }
+            return { balances, transactions };
+        }
+
+        // Bug Fix: Settlement Protection Lock
+        async function settleUp(from, to, amount) {
+            if (isSettling) return; 
+
+            let fromName = from === currentUser.name ? "You" : from;
+            let toName = to === currentUser.name ? "You" : to;
+            
+            if(confirm(`Confirm: ${fromName} paid ₹${amount.toFixed(0)} to ${toName}?`)) {
+                isSettling = true; // Lock executing thread
+                
+                const settlementExp = {
+                    id: Date.now().toString(), 
+                    updatedAt: Date.now(),
+                    desc: `Settlement: ${from} → ${to}`,
+                    amount: amount, originalAmount: amount, currency: 'INR',
+                    payer: from, category: "Settlement", isSettlement: true,
+                    split: { [to]: amount }, date: new Date().toISOString()
+                };
+                appData.expenses.push(settlementExp);
+                logActivity('SETTLE', settlementExp.desc, amount, currentUser.name);
+                await saveData(); 
+                
+                renderBalances(document.getElementById('main-content'));
+                isSettling = false; // Release lock
+            }
+        }
+
+        async function deleteExpense(id, event) {
+            if (event) event.stopPropagation();
+            const pass = prompt("🔒 Enter password to delete expense:");
+            if (pass === null) return;
+            if (pass === "5241") {
+                if(confirm("Permanently delete this transaction?")) {
+                    const exp = appData.expenses.find(e => e.id === id);
+                    if(exp) {
+                        exp.isDeleted = true;
+                        exp.updatedAt = Date.now();
+                        logActivity('DELETE', exp.desc, exp.amount, currentUser.name);
+                        await saveData();
+                        switchTab(currentTab);
+                    }
+                }
+            } else { alert("❌ Incorrect password. Deletion aborted."); }
+        }
+
+        // --- Expense Details & Editor ---
+        window.openExpenseDetails = function(id) {
+            const exp = appData.expenses.find(e => e.id === id);
+            if(!exp || exp.isDeleted) return;
+
+            const icon = getCategoryIcon(exp.category);
+            const dateStr = new Date(exp.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            let payerName = exp.payer === currentUser.name ? "You" : exp.payer;
+            
+            const actionContainer = document.getElementById('details-action-btn');
+            if (exp.isSettlement) {
+                actionContainer.innerHTML = ``; // Prevent editing settlements
+            } else {
+                actionContainer.innerHTML = `<button id="btn-edit-expense" class="text-teal-600 font-bold hit-target flex items-center justify-end btn-press text-sm w-12">Edit</button>`;
+                document.getElementById('btn-edit-expense').onclick = () => {
+                    closeDetailsModal();
+                    editingExpenseId = exp.id;
+                    setTimeout(() => {
+                        populateExpenseForm(exp.id);
+                        const modalExp = document.getElementById('modal-expense');
+                        modalExp.classList.remove('hidden'); modalExp.classList.add('modal-enter'); modalExp.classList.remove('modal-exit');
+                    }, 350);
+                };
+            }
+            
+            let html = `
+                <div class="bg-white p-6 rounded-3xl shadow-glass-sm text-center border border-slate-100">
+                    <div class="text-5xl mb-3">${icon}</div>
+                    <h3 class="text-2xl font-black text-slate-800 tracking-tight">${exp.desc}</h3>
+                    <p class="text-4xl font-black text-teal-600 mt-2">₹${exp.amount.toFixed(2)}</p>
+                    <p class="text-sm text-slate-500 mt-4 bg-slate-50 inline-block px-4 py-2 rounded-xl border border-slate-100">
+                        Paid by <span class="font-black text-slate-700">${payerName}</span><br>
+                        <span class="text-xs">${dateStr}</span>
+                    </p>
+                </div>
+                <h4 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 ml-2 mt-8">Split Breakdown</h4>
+                <div class="space-y-3">
+            `;
+            for(let person in exp.split) {
+                let displayName = person === currentUser.name ? "You" : person;
+                html += `
+                    <div class="glass-card p-4 rounded-2xl flex justify-between items-center shadow-glass-sm">
+                        <span class="font-bold text-slate-700">${displayName}</span>
+                        <span class="font-black text-slate-800">₹${exp.split[person].toFixed(2)}</span>
+                    </div>`;
+            }
+            html += `</div>`;
+            document.getElementById('details-content').innerHTML = html;
+            
+            const modal = document.getElementById('modal-details');
+            modal.classList.remove('hidden'); modal.classList.remove('modal-exit'); modal.classList.add('modal-enter');
+        }
+
+        window.closeDetailsModal = function() {
+            const modal = document.getElementById('modal-details');
+            modal.classList.replace('modal-enter', 'modal-exit');
+            setTimeout(() => modal.classList.add('hidden'), 300);
+        }
+
+        // --- Manage Travelers Modal ---
+        window.openManageTravelersModal = function() {
+            updateTravelerUI();
+            renderTravelersList();
+            const modal = document.getElementById('modal-names');
+            modal.classList.remove('hidden'); modal.classList.remove('modal-exit'); modal.classList.add('modal-enter');
+        }
+
+        function renderTravelersList() {
+            const list = document.getElementById('names-list');
+            list.innerHTML = appData.travelers.map((t, i) => {
+                let label = t === currentUser.name ? `${t} (You)` : t;
+                let removeBtn = t !== currentUser.name ? `<button onclick="removeTraveler('${t}')" class="text-[10px] text-orange-500 font-bold px-2 py-1 uppercase tracking-widest hit-target">Remove</button>` : '';
+                return `
+                <div class="flex justify-between items-center bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                    <span class="font-bold text-slate-700 text-sm pl-2">${label}</span>
+                    <div class="flex items-center gap-1 pr-1">
+                        <button onclick="editTraveler('${t}')" class="text-[10px] text-teal-600 font-bold px-2 py-1 uppercase tracking-widest hit-target">Edit</button>
+                        ${removeBtn}
+                    </div>
+                </div>`;
+            }).join('');
+            if(appData.travelers.length === 0) list.innerHTML = `<p class="text-sm text-slate-400">No travelers yet.</p>`;
+        }
+
+        document.getElementById('btn-add-traveler').addEventListener('click', async () => {
+            if(appData.travelers.length >= 6) return alert("Trip is full. Max 6 travelers.");
+            
+            const input = document.getElementById('new-traveler-name');
+            const name = formatName(input.value);
+            if(!name) return;
+            
+            const exists = appData.travelers.find(t => t.toLowerCase() === name.toLowerCase());
+            if(exists) return alert("Name already exists.");
+            
+            appData.travelers.push(name);
+            input.value = '';
+            
+            updateTravelerUI();
+            renderTravelersList();
+            await saveData();
+        });
+
+        // Edit Traveler Engine
+        window.editTraveler = async function(oldName) {
+            let newName = prompt(`Enter new name for ${oldName}:`, oldName);
+            if (!newName) return;
+            newName = formatName(newName);
+            if (newName === oldName) return;
+
+            const exists = appData.travelers.find(t => t.toLowerCase() === newName.toLowerCase());
+            if (exists) return alert("That name is already in the trip.");
+
+            appData.travelers = appData.travelers.map(t => t === oldName ? newName : t);
+            appData.expenses.forEach(ex => {
+                let modified = false;
+                if (ex.payer === oldName) { ex.payer = newName; modified = true; }
+                if (ex.split[oldName] !== undefined) {
+                    ex.split[newName] = ex.split[oldName];
+                    delete ex.split[oldName];
+                    modified = true;
+                }
+                if (modified) ex.updatedAt = Date.now();
+            });
+
+            appData.activities.forEach(act => {
+                if (act.by === oldName) act.by = newName;
+                act.desc = act.desc.replace(oldName, newName);
+            });
+
+            if (currentUser.name === oldName) {
+                currentUser.name = newName;
+                localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
+                document.getElementById('user-greeting').innerText = `Hi, ${currentUser.name}`;
+            }
+
+            renderTravelersList();
+            logActivity('EDIT', `Updated name ${oldName} to ${newName}`, 0, currentUser.name);
+            await saveData();
+        }
+
+        window.removeTraveler = async function(name) {
+            const involved = getValidExpenses().some(e => e.payer === name || Object.keys(e.split).includes(name));
+            if (involved) return alert(`Cannot remove ${name}. They are already part of existing expenses. Delete those expenses first.`);
+            
+            if(confirm(`Remove ${name} from the trip?`)) {
+                appData.travelers = appData.travelers.filter(t => t !== name);
+                
+                updateTravelerUI();
+                renderTravelersList();
+                await saveData();
+            }
+        }
+
+        // --- Setup Listeners & Split Toggle ---
+        function setSplitMode(mode) {
+            splitMode = mode;
+            const btnEq = document.getElementById('btn-split-equal');
+            const btnEx = document.getElementById('btn-split-exact');
+            const contEq = document.getElementById('split-equal-container');
+            const contEx = document.getElementById('split-exact-container');
+
+            if (mode === 'equal') {
+                btnEq.className = "px-4 py-1.5 text-xs font-bold rounded-md bg-white shadow-sm text-teal-600 transition-all";
+                btnEx.className = "px-4 py-1.5 text-xs font-bold rounded-md text-slate-500 transition-all hover:bg-slate-200/50";
+                contEq.classList.remove('hidden'); contEx.classList.add('hidden');
+                updateSplitCalculations();
+            } else {
+                btnEx.className = "px-4 py-1.5 text-xs font-bold rounded-md bg-white shadow-sm text-teal-600 transition-all";
+                btnEq.className = "px-4 py-1.5 text-xs font-bold rounded-md text-slate-500 transition-all hover:bg-slate-200/50";
+                contEx.classList.remove('hidden'); contEq.classList.add('hidden');
+                
+                const exactInputs = document.querySelectorAll('.exact-split-input');
+                const sum = Array.from(exactInputs).reduce((acc, input) => acc + (parseFloat(input.value) || 0), 0);
+                if (sum === 0 && modalAmount > 0) {
+                    const checked = document.querySelectorAll('.split-cb:checked');
+                    if (checked.length > 0) {
+                        const perPerson = modalAmount / checked.length;
+                        checked.forEach(cb => {
+                            const input = document.querySelector(`.exact-split-input[data-person="${cb.value}"]`);
+                            if (input) input.value = perPerson.toFixed(2);
+                        });
+                    }
+                }
+                updateExactTotal();
+            }
+        }
+
+        function setupEventListeners() {
+            document.getElementById('btn-split-equal').addEventListener('click', () => setSplitMode('equal'));
+            document.getElementById('btn-split-exact').addEventListener('click', () => setSplitMode('exact'));
+
+            document.getElementById('btn-reset').addEventListener('click', async () => {
+                const pass = prompt("🔒 Enter admin password to reset trip:");
+                if (pass === null) return;
+                
+                if (pass === "Prat@112890") {
+                    if(confirm("⚠️ DANGER: This will wipe the ENTIRE cloud database clean. Are you absolutely sure?")) {
+                        // Resets to just the current user
+                        appData = { travelers: [currentUser.name], expenses: [], activities: [] };
+                        
+                        const splash = document.getElementById('splash-screen');
+                        document.getElementById('splash-text').innerText = "Wiping Cloud Data...";
+                        splash.classList.remove('hidden'); splash.style.opacity = '1';
+
+                        await saveData(true); // <--- TRUE BYPASSES MERGE ENGINE FOR WIPING
+                        
+                        splash.style.opacity = '0';
+                        setTimeout(() => splash.classList.add('hidden'), 300);
+
+                        switchTab('expenses');
+                        alert("Trip has been successfully reset. Start adding travelers in the Summary tab.");
+                    }
+                } else { alert("❌ Incorrect password. Reset aborted."); }
+            });
+
+            const modalExp = document.getElementById('modal-expense');
+            const amtInput = document.getElementById('exp-amount');
+            
+            document.getElementById('btn-add-expense').addEventListener('click', () => {
+                if(appData.travelers.length < 1) return alert("Please add travelers in the Summary tab first.");
+                editingExpenseId = null; 
+                populateExpenseForm();
+                modalExp.classList.remove('hidden'); modalExp.classList.add('modal-enter'); modalExp.classList.remove('modal-exit');
+            });
+
+            document.getElementById('btn-close-expense').addEventListener('click', () => {
+                modalExp.classList.replace('modal-enter', 'modal-exit');
+                setTimeout(() => modalExp.classList.add('hidden'), 300);
+            });
+
+            amtInput.addEventListener('input', (e) => { 
+                modalAmount = parseFloat(e.target.value) || 0; 
+                if(splitMode === 'equal') updateSplitCalculations();
+                else updateExactTotal();
+            });
+
+            document.getElementById('btn-save-expense').addEventListener('click', saveExpense);
+
+            const modalNames = document.getElementById('modal-names');
+            document.getElementById('btn-close-names').addEventListener('click', () => {
+                modalNames.classList.replace('modal-enter', 'modal-exit');
+                setTimeout(() => { modalNames.classList.add('hidden'); switchTab('summary'); }, 300);
+            });
+        }
+
+        // Handles populating the form for BOTH New and Edit modes
+        function populateExpenseForm(id = null) {
+            const title = document.getElementById('modal-expense-title');
+            
+            if (id) {
+                title.innerText = "Edit Expense";
+                const exp = appData.expenses.find(e => e.id === id);
+                document.getElementById('exp-desc').value = exp.desc;
+                document.getElementById('exp-amount').value = exp.amount;
+                document.getElementById('exp-category').value = exp.category;
+                modalAmount = exp.amount;
+
+                const payerSelect = document.getElementById('exp-payer');
+                payerSelect.innerHTML = appData.travelers.map(t => `<option value="${t}" ${t === exp.payer ? 'selected' : ''}>${t === currentUser.name ? 'You' : t}</option>`).join('');
+
+                let isEqualSplit = true;
+                const splitKeys = Object.keys(exp.split);
+                const avg = exp.amount / splitKeys.length;
+                for (let k in exp.split) {
+                    if (Math.abs(exp.split[k] - avg) > 0.05) { isEqualSplit = false; break; }
+                }
+
+                const cbContainer = document.getElementById('split-checkboxes');
+                cbContainer.innerHTML = appData.travelers.map(t => `
+                    <label class="split-cb-wrapper relative block hit-target cursor-pointer">
+                        <input type="checkbox" value="${t}" class="split-cb peer sr-only" ${splitKeys.includes(t) ? 'checked' : ''} onchange="updateSplitCalculations()">
+                        <div class="w-full h-full p-3 rounded-2xl border-2 text-center text-sm font-bold transition-colors shadow-sm flex items-center justify-center truncate px-2">
+                            ${t === currentUser.name ? 'You' : t}
+                        </div>
+                    </label>
+                `).join('');
+
+                const exContainer = document.getElementById('exact-inputs-list');
+                exContainer.innerHTML = appData.travelers.map(t => {
+                    let val = (!isEqualSplit && splitKeys.includes(t)) ? exp.split[t].toFixed(2) : '';
+                    return `
+                        <div class="flex justify-between items-center bg-slate-50 p-2 rounded-xl border border-slate-100">
+                            <span class="text-sm font-bold text-slate-700 ml-2 truncate">${t === currentUser.name ? 'You' : t}</span>
+                            <div class="relative w-1/2 shrink-0">
+                                <span class="absolute left-3 top-2 text-slate-400 font-medium text-sm currency-symbol-exact">₹</span>
+                                <input type="number" data-person="${t}" inputmode="decimal" class="exact-split-input w-full bg-white border border-slate-200 rounded-lg py-1.5 pl-7 pr-2 text-right font-bold text-slate-800 focus:border-teal-500 outline-none" placeholder="0" value="${val}" oninput="updateExactTotal()">
+                            </div>
+                        </div>`;
+                }).join('');
+
+                setSplitMode(isEqualSplit ? 'equal' : 'exact');
+
+            } else {
+                title.innerText = "Add Expense";
+                document.getElementById('exp-desc').value = '';
+                document.getElementById('exp-amount').value = '';
+                modalAmount = 0; document.getElementById('exp-category').value = 'Food';
+
+                const payerSelect = document.getElementById('exp-payer');
+                payerSelect.innerHTML = appData.travelers.map(t => `<option value="${t}" ${t === currentUser.name ? 'selected' : ''}>${t === currentUser.name ? 'You' : t}</option>`).join('');
+
+                const cbContainer = document.getElementById('split-checkboxes');
+                cbContainer.innerHTML = appData.travelers.map(t => `
+                    <label class="split-cb-wrapper relative block hit-target cursor-pointer">
+                        <input type="checkbox" value="${t}" class="split-cb peer sr-only" checked onchange="updateSplitCalculations()">
+                        <div class="w-full h-full p-3 rounded-2xl border-2 text-center text-sm font-bold transition-colors shadow-sm flex items-center justify-center truncate px-2">
+                            ${t === currentUser.name ? 'You' : t}
+                        </div>
+                    </label>
+                `).join('');
+
+                const exContainer = document.getElementById('exact-inputs-list');
+                exContainer.innerHTML = appData.travelers.map(t => `
+                    <div class="flex justify-between items-center bg-slate-50 p-2 rounded-xl border border-slate-100">
+                        <span class="text-sm font-bold text-slate-700 ml-2 truncate">${t === currentUser.name ? 'You' : t}</span>
+                        <div class="relative w-1/2 shrink-0">
+                            <span class="absolute left-3 top-2 text-slate-400 font-medium text-sm currency-symbol-exact">₹</span>
+                            <input type="number" data-person="${t}" inputmode="decimal" class="exact-split-input w-full bg-white border border-slate-200 rounded-lg py-1.5 pl-7 pr-2 text-right font-bold text-slate-800 focus:border-teal-500 outline-none" placeholder="0" oninput="updateExactTotal()">
+                        </div>
+                    </div>
+                `).join('');
+
+                setSplitMode('equal');
+            }
+        }
+
+        window.updateSplitCalculations = function() {
+            if (splitMode !== 'equal') return;
+            const checkboxes = document.querySelectorAll('.split-cb:checked');
+            const count = checkboxes.length;
+            const display = document.getElementById('split-calc-display');
+            
+            if (count === 0) {
+                display.innerText = "₹0 / each";
+                display.className = "text-sm font-black text-orange-500 bg-orange-50 px-3 py-1 rounded-lg";
+            } else {
+                const perPerson = modalAmount / count;
+                display.innerText = `₹${perPerson.toFixed(0)} / each`;
+                display.className = "text-sm font-black text-teal-600 bg-teal-50 px-3 py-1 rounded-lg";
+            }
+        };
+
+        window.updateExactTotal = function() {
+            if (splitMode !== 'exact') return;
+            const inputs = document.querySelectorAll('.exact-split-input');
+            let currentTotal = 0;
+            inputs.forEach(input => { currentTotal += parseFloat(input.value) || 0; });
+
+            const display = document.getElementById('split-calc-display');
+            let diff = modalAmount - currentTotal;
+            
+            if (modalAmount === 0) {
+                display.innerText = `₹0.00 left`;
+                display.className = "text-sm font-black text-slate-500 bg-slate-100 px-3 py-1 rounded-lg";
+            } else if (Math.abs(diff) < 0.01) {
+                display.innerText = "Match! ✓";
+                display.className = "text-sm font-black text-teal-600 bg-teal-50 px-3 py-1 rounded-lg";
+            } else if (diff > 0) {
+                display.innerText = `₹${diff.toFixed(2)} left`;
+                display.className = "text-sm font-black text-orange-500 bg-orange-50 px-3 py-1 rounded-lg";
+            } else {
+                display.innerText = `Over by ₹${Math.abs(diff).toFixed(2)}`;
+                display.className = "text-sm font-black text-red-500 bg-red-50 px-3 py-1 rounded-lg";
+            }
+        };
+
+        async function saveExpense() {
+            if(isSavingExpense) return;
+
+            const desc = document.getElementById('exp-desc').value.trim();
+            const inputAmount = parseFloat(document.getElementById('exp-amount').value);
+            const payer = document.getElementById('exp-payer').value;
+            const category = document.getElementById('exp-category').value;
+            
+            if (!desc) return alert("Please enter a description.");
+            if (!inputAmount || inputAmount <= 0) return alert("Please enter a valid amount.");
+
+            let splitObj = {};
+
+            if (splitMode === 'equal') {
+                const checkboxes = document.querySelectorAll('.split-cb:checked');
+                if (checkboxes.length === 0) return alert("Select at least one person to split with.");
+                
+                const baseSplit = Math.round((inputAmount / checkboxes.length) * 100) / 100;
+                let totalAssigned = 0;
+                
+                checkboxes.forEach((cb, idx) => {
+                    if (idx === checkboxes.length - 1) {
+                        splitObj[cb.value] = Math.round((inputAmount - totalAssigned) * 100) / 100;
+                    } else {
+                        splitObj[cb.value] = baseSplit; totalAssigned += baseSplit;
+                    }
+                });
+            } else {
+                const inputs = document.querySelectorAll('.exact-split-input');
+                let inputSum = 0;
+                let totalAssignedINR = 0;
+
+                inputs.forEach(input => {
+                    let val = parseFloat(input.value) || 0;
+                    if (val > 0) {
+                        inputSum += val;
+                        splitObj[input.dataset.person] = Math.round(val * 100) / 100;
+                        totalAssignedINR += splitObj[input.dataset.person];
+                    }
+                });
+
+                if (Math.abs(inputSum - inputAmount) > 0.05) {
+                    return alert("Exact amounts must sum up perfectly to the total amount.");
+                }
+                if (Object.keys(splitObj).length === 0) return alert("Enter amounts for at least one person.");
+                
+                const keys = Object.keys(splitObj);
+                const lastKey = keys[keys.length - 1];
+                let drift = inputAmount - totalAssignedINR;
+                if (Math.abs(drift) > 0.001) {
+                    splitObj[lastKey] = Math.round((splitObj[lastKey] + drift) * 100) / 100;
+                }
+            }
+
+            isSavingExpense = true; // Lock execution
+            
+            if (editingExpenseId) {
+                const index = appData.expenses.findIndex(e => e.id === editingExpenseId);
+                if (index !== -1) {
+                    appData.expenses[index] = {
+                        ...appData.expenses[index],
+                        updatedAt: Date.now(), 
+                        desc: desc, amount: inputAmount, originalAmount: inputAmount,
+                        currency: 'INR', payer: payer, category: category, split: splitObj
+                    };
+                    logActivity('EDIT', desc, inputAmount, currentUser.name);
+                }
+            } else {
+                const newExp = {
+                    id: Date.now().toString(),
+                    updatedAt: Date.now(),
+                    desc: desc, amount: inputAmount, originalAmount: inputAmount,
+                    currency: 'INR', payer: payer, category: category,
+                    split: splitObj, date: new Date().toISOString(), isSettlement: false
+                };
+                appData.expenses.push(newExp);
+                logActivity('ADD', desc, inputAmount, currentUser.name);
+            }
+            
+            editingExpenseId = null; 
+            
+            const loader = document.getElementById('expense-loader');
+            loader.classList.remove('hidden'); loader.classList.add('flex');
+
+            await saveData();
+            
+            loader.classList.add('hidden'); loader.classList.remove('flex');
+            isSavingExpense = false; // Release lock
+            
+            const modal = document.getElementById('modal-expense');
+            modal.classList.replace('modal-enter', 'modal-exit');
+            setTimeout(() => { modal.classList.add('hidden'); switchTab(currentTab); }, 300);
+        }
+
+        function getCategoryIcon(cat) {
+            const icons = { 'Food': '🍔', 'Transport': '🚕', 'Massage': '💆', 'Hotel': '🏨', 'Activities': '🏄', 'Misc': '🛍️', 'Settlement': '🤝' };
+            return icons[cat] || '🏖️';
+        }
+    </script>
+</body>
+</html>
+
+```
