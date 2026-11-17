@@ -1,22 +1,3 @@
-Here is the completely updated, production-ready `index.html` designed for your **Goa Trip**.
-
-### Key Updates & Fixes:
-
-1. **The 6-Traveler Cap:** The app now actively monitors the group size. As soon as the trip hits exactly 6 people, the "Add New User" form on the login screen and the "Add Someone" box in the settings automatically disappear. New devices will only see the existing names to tap and join. If someone is removed, the forms instantly reappear.
-2. **Double Settlement Bug Fixed:** The issue where two entries were created during settlement was caused by a "Double Tap Race Condition" on mobile browsers. I have implemented a strict execution lock (`isSettling = true`) that freezes the engine until the first transaction safely reaches the cloud, physically preventing duplicates.
-3. **Goa Theme & INR Native:** Stripped out the Thai Baht conversion logic and dropdowns. The app is now strictly locked to ₹ (INR) for a much cleaner, faster expense entry experience. The visual theme and background have been updated for a Goa beach vibe, and the version is bumped to **V2.0**.
-
-### ⚠️ Important Note on using the same Google Sheet:
-
-Because you are using the exact same Google Sheet URL, **when you first open this new app, it will load your old Thailand data** (which has 8 people).
-
-* Simply tap **Reset**, enter your password (`Prat@112890`), and it will wipe the Google Sheet completely clean so you can start fresh with your 6 Goa travelers!
-
----
-
-### Replace your entire `index.html` with this code:
-
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1365,4 +1346,4 @@ Because you are using the exact same Google Sheet URL, **when you first open thi
 </body>
 </html>
 
-```
+
